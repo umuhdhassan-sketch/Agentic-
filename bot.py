@@ -43,19 +43,17 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 bot_app.add_handler(CommandHandler("start", start))
 bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
 
-# Tsarin Lifespan na zamani don kunna da kashe Webhook cikin tsari tsaf
+# Sabon tsarin Lifespan na FastAPI
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    render_url = os.environ.get("RENDER_EXTERNAL_URL", "https://agentic--markets.onrender.com")
     await bot_app.initialize()
-    await bot_app.bot.set_webhook(url=f"{render_url}/webhook")
+    await bot_app.bot.set_webhook(url="https://agentic-markets.onrender.com/webhook")
     await bot_app.start()
-    logging.info(f"🚀 Bot has successfully initialized Webhook at {render_url}")
+    logging.info("🚀 Bot Webhook successfully initialized!")
     yield
     await bot_app.stop()
     await bot_app.shutdown()
 
-# Kaddamar da FastAPI tare da Lifespan
 app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
