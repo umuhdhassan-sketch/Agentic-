@@ -10,7 +10,6 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # Sanya lambobin sirri
 GROQ_API_KEY = "Gsk_P4Gp6Vcfjcc9NcGXYDSDWGdyb3FYXi5lbYB3W65Xo4MREQD2bOue"
 TELEGRAM_BOT_TOKEN = "8990797862:AAHey5yxI-YWJtMjOvimfJc7GFSsRTkC57c"
-RENDER_URL = "https://agentic--markets.onrender.com"
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 client = Groq(api_key=GROQ_API_KEY)
@@ -45,13 +44,16 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 bot_app.add_handler(CommandHandler("start", start))
 bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
 
-# Tsarin Lifespan na FastAPI don kunna da kashe Webhook cikin tsari
+# Tsarin Lifespan na FastAPI don gano adireshin Render da kansa
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Gano ainihin sunan uwar garken Render da kanta
+    render_external_url = os.environ.get("RENDER_EXTERNAL_URL", "https://agentic--markets.onrender.com")
+    
     await bot_app.initialize()
-    await bot_app.bot.set_webhook(url=f"{RENDER_URL}/webhook")
+    await bot_app.bot.set_webhook(url=f"{render_external_url}/webhook")
     await bot_app.start()
-    logging.info("🚀 Webhook successfully set and Bot started!")
+    logging.info(f"🚀 Webhook successfully set to {render_external_url}/webhook")
     yield
     await bot_app.stop()
     await bot_app.shutdown()
@@ -72,3 +74,4 @@ async def webhook_handler(request: Request):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run("bot:app", host="0.0.0.0", port=port)
+    
