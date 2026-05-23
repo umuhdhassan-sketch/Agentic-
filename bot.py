@@ -1,5 +1,6 @@
 import logging
 import os
+import contextlib
 from fastapi import FastAPI, Request
 from groq import Groq
 from telegram import Update
@@ -12,7 +13,7 @@ TELEGRAM_BOT_TOKEN = "8990797862:AAHey5yxI-YWJtMjOvimfJc7GFSsRTkC57c"
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 client = Groq(api_key=GROQ_API_KEY)
 
-# Kaddamar da application ba tare da tsofaffin matsaloli ba
+# Kaddamar da Telegram Application
 bot_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
 def ask_groq(user_text):
@@ -42,22 +43,20 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 bot_app.add_handler(CommandHandler("start", start))
 bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
 
-# Kaddamar da FastAPI
-app = FastAPI()
-
-@app.on_event("startup")
-async def startup_event():
-    # Kunna bot din a bango cikin tsari na Webhook
-    render_url = os.environ.get("RENDER_EXTERNAL_URL", "https://agentic-markets.onrender.com")
+# Tsarin Lifespan na zamani don kunna da kashe Webhook cikin tsari tsaf
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    render_url = os.environ.get("RENDER_EXTERNAL_URL", "https://agentic--markets.onrender.com")
     await bot_app.initialize()
     await bot_app.bot.set_webhook(url=f"{render_url}/webhook")
     await bot_app.start()
-    logging.info("🚀 Bot has successfully initialized Webhook!")
-
-@app.on_event("shutdown")
-async def shutdown_event():
+    logging.info(f"🚀 Bot has successfully initialized Webhook at {render_url}")
+    yield
     await bot_app.stop()
     await bot_app.shutdown()
+
+# Kaddamar da FastAPI tare da Lifespan
+app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
 async def index():
