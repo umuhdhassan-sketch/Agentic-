@@ -1,7 +1,7 @@
 import logging
 import os
-import asyncio
-from aiohttp import web
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import json
 from groq import Groq
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -9,12 +9,13 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # Sanya lambobin sirri
 GROQ_API_KEY = "Gsk_P4Gp6Vcfjcc9NcGXYDSDWGdyb3FYXi5lbYB3W65Xo4MREQD2bOue"
 TELEGRAM_BOT_TOKEN = "8990797862:AAHey5yxI-YWJtMjOvimfJc7GFSsRTkC57c"
+RENDER_URL = "https://agentic-w7gr.onrender.com"
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 client = Groq(api_key=GROQ_API_KEY)
 
-# Kaddamar da Telegram Bot Application
-bot_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+# Kaddamar da Telegram Application
+app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
 def ask_groq(user_text):
     try:
@@ -31,7 +32,7 @@ def ask_groq(user_text):
         return "Sorry, I encountered an issue. Please try again."
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! Your AgenticMarkets AI Bot is officially online 24/7 on Render Free. Ask me anything!")
+    await update.message.reply_text("Hello! Your AgenticMarkets AI Bot is officially online 24/7 via Webhook. Ask me anything!")
 
 async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
@@ -39,41 +40,46 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ai_answer = ask_groq(user_message)
     await update.message.reply_text(ai_answer)
 
-# Sanya Handlers na Bot din
-bot_app.add_handler(CommandHandler("start", start))
-bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
+app.add_handler(CommandHandler("start", start))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
 
-# Kare bukatun Render Free (Health Check API)
-async def handle_health(request):
-    return web.Response(text="OK", content_type="text/plain")
+# Sabar HTTP wacce za ta karbi sakonni kai tsaye daga Telegram
+class WebhookHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        # Health check na Render
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is Running")
 
-async def main():
-    # 1. Kaddamar da aiohttp Web Server a cikin asyncio loop guda daya
-    server_app = web.Application()
-    server_app.router.add_get('/', handle_health)
-    
-    runner = web.AppRunner(server_app)
-    await runner.setup()
-    
-    port = int(os.environ.get("PORT", 10000))
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
-    logging.info(f"🚀 Health Server dynamically tied to port {port}")
-
-    # 2. Fara amfani da tsarin Polling na Telegram a cikin loop din lafiya lau
-    async with bot_app:
-        await bot_app.initialize()
-        await bot_app.start()
-        await bot_app.updater.start_polling()
-        logging.info("🚀 Telegram Bot is polling smoothly in harmony with the web server...")
+    def do_POST(self):
+        # Karbar sakonni daga Telegram
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
         
-        # Tsayawa a kunne har abada
-        while True:
-            await asyncio.sleep(3600)
+        try:
+            update_json = json.loads(post_data.decode('utf-8'))
+            update = Update.de_json(update_json, app.bot)
+            
+            # Gudanar da sakon a cikin asalin loop na telegram
+            import asyncio
+            asyncio.run(app.process_update(update))
+        except Exception as e:
+            logging.error(f"Error processing update: {e}")
+
+        self.send_response(200)
+        self.end_headers()
+
+def main():
+    # Kunna Webhook a sabar Telegram da kanta
+    import asyncio
+    asyncio.run(app.bot.set_webhook(url=f"{RENDER_URL}/webhook"))
+    logging.info("🚀 Webhook successfully registered with Telegram!")
+
+    # Fara sabar HTTP akan Port na Render
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), WebhookHandler)
+    logging.info(f"🚀 Webhook Server listening on port {port}")
+    server.serve_forever()
 
 if __name__ == '__main__':
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        pass
-        
+    main()
