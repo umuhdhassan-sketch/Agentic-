@@ -1,7 +1,7 @@
 import logging
 import os
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import asyncio
+from aiohttp import web
 from groq import Groq
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -13,23 +13,9 @@ TELEGRAM_BOT_TOKEN = "8990797862:AAHey5yxI-YWJtMjOvimfJc7GFSsRTkC57c"
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 client = Groq(api_key=GROQ_API_KEY)
 
-# 1. Uwar garken karya don Render (Health Check)
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-        self.wfile.write(b"OK")
-    def log_message(self, format, *args):
-        return  # Kashe tulin logs na HTTP
+# Kaddamar da Telegram Bot Application
+bot_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-def run_health_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
-    logging.info(f"🚀 Render Port Checker active on port {port}")
-    server.serve_forever()
-
-# 2. Aikace-aikacen AI na Groq
 def ask_groq(user_text):
     try:
         chat_completion = client.chat.completions.create(
@@ -53,19 +39,41 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ai_answer = ask_groq(user_message)
     await update.message.reply_text(ai_answer)
 
-def main():
-    # A. Kunna uwar garken Render a wani Thread na daban don kar ta toshe Bot dinmu
-    t = threading.Thread(target=run_health_server, daemon=True)
-    t.start()
+# Sanya Handlers na Bot din
+bot_app.add_handler(CommandHandler("start", start))
+bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
+
+# Kare bukatun Render Free (Health Check API)
+async def handle_health(request):
+    return web.Response(text="OK", content_type="text/plain")
+
+async def main():
+    # 1. Kaddamar da aiohttp Web Server a cikin asyncio loop guda daya
+    server_app = web.Application()
+    server_app.router.add_get('/', handle_health)
     
-    # B. Kaddamar da asalin kiran Telegram Bot
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
+    runner = web.AppRunner(server_app)
+    await runner.setup()
     
-    logging.info("🚀 Bot is starting polling mode safely...")
-    app.run_polling()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    logging.info(f"🚀 Health Server dynamically tied to port {port}")
+
+    # 2. Fara amfani da tsarin Polling na Telegram a cikin loop din lafiya lau
+    async with bot_app:
+        await bot_app.initialize()
+        await bot_app.start()
+        await bot_app.updater.start_polling()
+        logging.info("🚀 Telegram Bot is polling smoothly in harmony with the web server...")
+        
+        # Tsayawa a kunne har abada
+        while True:
+            await asyncio.sleep(3600)
 
 if __name__ == '__main__':
-    main()
-    
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
+        
