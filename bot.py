@@ -10,7 +10,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # Sanya lambobin sirri
 GROQ_API_KEY = "Gsk_P4Gp6Vcfjcc9NcGXYDSDWGdyb3FYXi5lbYB3W65Xo4MREQD2bOue"
 TELEGRAM_BOT_TOKEN = "8990797862:AAHey5yxI-YWJtMjOvimfJc7GFSsRTkC57c"
-RENDER_URL = "https://agentic-markets.onrender.com"
+RENDER_URL = "https://agentic--markets.onrender.com"
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 client = Groq(api_key=GROQ_API_KEY)
