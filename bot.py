@@ -8,7 +8,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 # Sanya lambobin sirri
 GROQ_API_KEY = "Gsk_P4Gp6Vcfjcc9NcGXYDSDWGdyb3FYXi5lbYB3W65Xo4MREQD2bOue"
-TELEGRAM_BOT_TOKEN = "8990797862:AAGMMpSZJxKLkWP9yB8Bi0QZylL_G9maH7w"
+TELEGRAM_BOT_TOKEN = "8990797862:AAHey5yxI-YWJtMjOvimfJc7GFSsRTkC57c"
+
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 client = Groq(api_key=GROQ_API_KEY)
