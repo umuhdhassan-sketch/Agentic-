@@ -1,5 +1,8 @@
 import logging
 import os
+import contextlib
+from fastapi import FastAPI, Request
+import uvicorn
 from groq import Groq
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -11,6 +14,9 @@ RENDER_URL = "https://agentic-markets.onrender.com"
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 client = Groq(api_key=GROQ_API_KEY)
+
+# Kaddamar da Telegram Application
+bot_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
 def ask_groq(user_text):
     try:
@@ -35,21 +41,34 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ai_answer = ask_groq(user_message)
     await update.message.reply_text(ai_answer)
 
-def main():
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
-    
-    port = int(os.environ.get("PORT", 10000))
-    
-    print("🚀 Starting Webhook...")
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        url_path=TELEGRAM_BOT_TOKEN,
-        webhook_url=f"{RENDER_URL}/{TELEGRAM_BOT_TOKEN}"
-    )
+# Sanya Handlers
+bot_app.add_handler(CommandHandler("start", start))
+bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
 
-if __name__ == '__main__':
-    main()
-    
+# Tsarin Lifespan na FastAPI don kunna da kashe Webhook cikin tsari
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    await bot_app.initialize()
+    await bot_app.bot.set_webhook(url=f"{RENDER_URL}/webhook")
+    await bot_app.start()
+    logging.info("🚀 Webhook successfully set and Bot started!")
+    yield
+    await bot_app.stop()
+    await bot_app.shutdown()
+
+app = FastAPI(lifespan=lifespan)
+
+@app.get("/")
+async def home():
+    return {"status": "Bot is running"}
+
+@app.post("/webhook")
+async def webhook_handler(request: Request):
+    data = await request.json()
+    update = Update.de_json(data, bot_app.bot)
+    await bot_app.process_update(update)
+    return {"status": "ok"}
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run("bot:app", host="0.0.0.0", port=port)
