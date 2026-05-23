@@ -1,21 +1,16 @@
-import logging
 import os
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import json
+import requests
+from flask import Flask, request
 from groq import Groq
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Sanya lambobin sirri
+app = Flask(__name__)
+
+# Lambobin sirri
 GROQ_API_KEY = "Gsk_P4Gp6Vcfjcc9NcGXYDSDWGdyb3FYXi5lbYB3W65Xo4MREQD2bOue"
 TELEGRAM_BOT_TOKEN = "8990797862:AAHey5yxI-YWJtMjOvimfJc7GFSsRTkC57c"
-RENDER_URL = "https://agentic-w7gr.onrender.com"
+RENDER_URL = "https://agentic--markets.onrender.com"
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 client = Groq(api_key=GROQ_API_KEY)
-
-# Kaddamar da Telegram Application
-app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
 def ask_groq(user_text):
     try:
@@ -28,58 +23,40 @@ def ask_groq(user_text):
         )
         return chat_completion.choices[0].message.content
     except Exception as e:
-        logging.error(f"Groq API Error: {e}")
-        return "Sorry, I encountered an issue. Please try again."
+        return "Sorry, I encountered an issue."
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! Your AgenticMarkets AI Bot is officially online 24/7 via Webhook. Ask me anything!")
+def send_message(chat_id, text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    requests.post(url, json={"chat_id": chat_id, "text": text})
 
-async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = update.message.text
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    ai_answer = ask_groq(user_message)
-    await update.message.reply_text(ai_answer)
+@app.route('/', methods=['GET'])
+def index():
+    return "AgenticMarkets Bot is Live on Flask!", 200
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
-
-# Sabar HTTP wacce za ta karbi sakonni kai tsaye daga Telegram
-class WebhookHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        # Health check na Render
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is Running")
-
-    def do_POST(self):
-        # Karbar sakonni daga Telegram
-        content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length)
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    data = request.get_json()
+    if data and "message" in data and "text" in data["message"]:
+        chat_id = data["message"]["chat"]["id"]
+        user_text = data["message"]["text"]
         
-        try:
-            update_json = json.loads(post_data.decode('utf-8'))
-            update = Update.de_json(update_json, app.bot)
+        # Nuna cewa bot yana rubutu
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendChatAction", json={"chat_id": chat_id, "action": "typing"})
+        
+        if user_text.strip() == '/start':
+            send_message(chat_id, "Hello! AgenticMarkets AI Bot is officially online via Flask Webhook!")
+        else:
+            reply = ask_groq(user_text)
+            send_message(chat_id, reply)
             
-            # Gudanar da sakon a cikin asalin loop na telegram
-            import asyncio
-            asyncio.run(app.process_update(update))
-        except Exception as e:
-            logging.error(f"Error processing update: {e}")
-
-        self.send_response(200)
-        self.end_headers()
-
-def main():
-    # Kunna Webhook a sabar Telegram da kanta
-    import asyncio
-    asyncio.run(app.bot.set_webhook(url=f"{RENDER_URL}/webhook"))
-    logging.info("🚀 Webhook successfully registered with Telegram!")
-
-    # Fara sabar HTTP akan Port na Render
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), WebhookHandler)
-    logging.info(f"🚀 Webhook Server listening on port {port}")
-    server.serve_forever()
+    return "OK", 200
 
 if __name__ == '__main__':
-    main()
+    # Hada Telegram da Render
+    webhook_url = f"{RENDER_URL}/webhook"
+    requests.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook?url={webhook_url}")
+    
+    # Kaddamar da Flask akan Port din Render
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+    
