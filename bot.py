@@ -1,8 +1,6 @@
 import logging
 import os
-import asyncio
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from fastapi import FastAPI, Request
 from groq import Groq
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -14,21 +12,8 @@ TELEGRAM_BOT_TOKEN = "8990797862:AAHey5yxI-YWJtMjOvimfJc7GFSsRTkC57c"
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 client = Groq(api_key=GROQ_API_KEY)
 
-# Server ta karya don baiwa Render amsa nan take
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-        self.wfile.write(b"OK")
-    def log_message(self, format, *args):
-        return  # Kashe logs din server don kar su cika allo
-
-def run_health_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
-    logging.info(f"Health server running on port {port}")
-    server.serve_forever()
+# Kaddamar da application ba tare da tsofaffin matsaloli ba
+bot_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
 def ask_groq(user_text):
     try:
@@ -53,28 +38,35 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ai_answer = ask_groq(user_message)
     await update.message.reply_text(ai_answer)
 
-async def main():
-    # Kunna server din Render a bango ta amfani da Threading
-    threading.Thread(target=run_health_server, daemon=True).start()
-    
-    # Kaddamar da Telegram Bot
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
-    
-    # Kunna tsarin Polling na gaskiya
-    async with app:
-        await app.initialize()
-        await app.start()
-        print("🚀 Bot is successfully polling Telegram...")
-        await app.updater.start_polling()
-        # Tsayawa a kunne har abada
-        while True:
-            await asyncio.sleep(3600)
+# Sanya Handlers
+bot_app.add_handler(CommandHandler("start", start))
+bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
 
-if __name__ == '__main__':
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        pass
-        
+# Kaddamar da FastAPI
+app = FastAPI()
+
+@app.on_event("startup")
+async def startup_event():
+    # Kunna bot din a bango cikin tsari na Webhook
+    render_url = os.environ.get("RENDER_EXTERNAL_URL", "https://agentic-markets.onrender.com")
+    await bot_app.initialize()
+    await bot_app.bot.set_webhook(url=f"{render_url}/webhook")
+    await bot_app.start()
+    logging.info("🚀 Bot has successfully initialized Webhook!")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await bot_app.stop()
+    await bot_app.shutdown()
+
+@app.get("/")
+async def index():
+    return {"status": "AgenticMarkets Bot is Running"}
+
+@app.post("/webhook")
+async def webhook(request: Request):
+    data = await request.json()
+    update = Update.de_json(data, bot_app.bot)
+    await bot_app.process_update(update)
+    return {"status": "ok"}
+    
