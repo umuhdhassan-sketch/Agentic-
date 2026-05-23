@@ -1,7 +1,6 @@
 import logging
 import os
 import asyncio
-import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from groq import Groq
 from telegram import Update
@@ -14,7 +13,7 @@ TELEGRAM_BOT_TOKEN = "8990797862:AAHey5yxI-YWJtMjOvimfJc7GFSsRTkC57c"
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 client = Groq(api_key=GROQ_API_KEY)
 
-# Sabar karya ta HTTP don gamsar da tsarin Port Binding na Render
+# Uwar garken karya ta HTTP don gamsar da tsarin Port Binding na Render Free Web Service
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -22,13 +21,16 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"OK")
     def log_message(self, format, *args):
-        return  # Kashe tulin logs don kar su cika allo
+        return  # Kashe tulin logs don su bar allo da tsabta
 
-def run_health_server():
+async def run_health_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
     logging.info(f"🚀 Health server successfully linked to port {port}")
-    server.serve_forever()
+    
+    # Gudanar da server a bango ba tare da toshe asyncio loop ba
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, server.serve_forever)
 
 def ask_groq(user_text):
     try:
@@ -53,19 +55,29 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ai_answer = ask_groq(user_message)
     await update.message.reply_text(ai_answer)
 
-def main():
-    # Kunna sabar HTTP a wani tazarar thread na daban don gudun rikici
-    server_thread = threading.Thread(target=run_health_server, daemon=True)
-    server_thread.start()
+async def main():
+    # 1. Kunna uwar garken karya ta HTTP don Render ya ga Port 10000 a bude
+    await run_health_server()
     
-    # Kaddamar da Telegram Bot cikin tsari na gaskiya
+    # 2. Kaddamar da Telegram Bot
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
     
-    print("🚀 Bot is successfully polling Telegram...")
-    app.run_polling(close_loop=False)
+    # 3. Kunna tsarin Polling a cikin asyncio loop guda daya
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    
+    logging.info("🚀 Bot is successfully polling Telegram...")
+    
+    # Tsayawa a kunne har abada
+    while True:
+        await asyncio.sleep(3600)
 
 if __name__ == '__main__':
-    main()
-    
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
+        
