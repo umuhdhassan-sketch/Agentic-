@@ -1,8 +1,8 @@
 import logging
 import os
-import contextlib
-from fastapi import FastAPI, Request
-import uvicorn
+import asyncio
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from groq import Groq
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -14,8 +14,21 @@ TELEGRAM_BOT_TOKEN = "8990797862:AAHey5yxI-YWJtMjOvimfJc7GFSsRTkC57c"
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 client = Groq(api_key=GROQ_API_KEY)
 
-# Kaddamar da Telegram Application
-bot_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+# Server ta karya don baiwa Render amsa nan take
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(b"OK")
+    def log_message(self, format, *args):
+        return  # Kashe logs din server don kar su cika allo
+
+def run_health_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    logging.info(f"Health server running on port {port}")
+    server.serve_forever()
 
 def ask_groq(user_text):
     try:
@@ -40,38 +53,28 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ai_answer = ask_groq(user_message)
     await update.message.reply_text(ai_answer)
 
-# Sanya Handlers
-bot_app.add_handler(CommandHandler("start", start))
-bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
-
-# Tsarin Lifespan na FastAPI don gano adireshin Render da kansa
-@contextlib.asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Gano ainihin sunan uwar garken Render da kanta
-    render_external_url = os.environ.get("RENDER_EXTERNAL_URL", "https://agentic--markets.onrender.com")
+async def main():
+    # Kunna server din Render a bango ta amfani da Threading
+    threading.Thread(target=run_health_server, daemon=True).start()
     
-    await bot_app.initialize()
-    await bot_app.bot.set_webhook(url=f"{render_external_url}/webhook")
-    await bot_app.start()
-    logging.info(f"🚀 Webhook successfully set to {render_external_url}/webhook")
-    yield
-    await bot_app.stop()
-    await bot_app.shutdown()
-
-app = FastAPI(lifespan=lifespan)
-
-@app.get("/")
-async def home():
-    return {"status": "Bot is running"}
-
-@app.post("/webhook")
-async def webhook_handler(request: Request):
-    data = await request.json()
-    update = Update.de_json(data, bot_app.bot)
-    await bot_app.process_update(update)
-    return {"status": "ok"}
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    uvicorn.run("bot:app", host="0.0.0.0", port=port)
+    # Kaddamar da Telegram Bot
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
     
+    # Kunna tsarin Polling na gaskiya
+    async with app:
+        await app.initialize()
+        await app.start()
+        print("🚀 Bot is successfully polling Telegram...")
+        await app.updater.start_polling()
+        # Tsayawa a kunne har abada
+        while True:
+            await asyncio.sleep(3600)
+
+if __name__ == '__main__':
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
+        
