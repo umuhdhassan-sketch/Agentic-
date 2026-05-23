@@ -1,32 +1,25 @@
-import os
-from flask import Flask, request
+from telegram.ext import Application, MessageHandler, filters
 from groq import Groq
+import logging
 
-app = Flask(__name__)
-client = Groq(api_key="Gsk_P4Gp6Vcfjcc9NcGXYDSDWGdyb3FYXi5lbYB3W65Xo4MREQD2bOue")
+# Sanya lambobin sirri
+TOKEN = "8990797862:AAHey5yxI-YWJtMjOvimfJc7GFSsRTkC57c"
+GROQ_API = "Gsk_P4Gp6Vcfjcc9NcGXYDSDWGdyb3FYXi5lbYB3W65Xo4MREQD2bOue"
+client = Groq(api_key=GROQ_API)
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    data = request.get_json()
-    if 'message' in data:
-        chat_id = data['message']['chat']['id']
-        text = data['message'].get('text', '')
-        
-        # Nan ne AI ɗin zai amsa
-        if text:
-            completion = client.chat.completions.create(
-                messages=[{"role": "user", "content": text}],
-                model="llama3-8b-8192"
-            )
-            reply = completion.choices[0].message.content
-            
-            # Amsa zuwa Telegram
-            import requests
-            requests.post(f"https://api.telegram.org/bot8990797862:AAHey5yxI-YWJtMjOvimfJc7GFSsRTkC57c/sendMessage", 
-                          json={"chat_id": chat_id, "text": reply})
-    return "OK", 200
+async def reply(update, context):
+    user_text = update.message.text
+    # Amsa da Groq
+    chat_completion = client.chat.completions.create(
+        messages=[{"role": "user", "content": user_text}],
+        model="llama3-8b-8192"
+    )
+    ai_reply = chat_completion.choices[0].message.content
+    await update.message.reply_text(ai_reply)
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
+    print("Bot yana gudu... yana sauraron saƙonni!")
+    app.run_polling()
     
